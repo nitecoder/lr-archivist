@@ -1,0 +1,13 @@
+=LR Setup=
+[ ] download exported catalog with remote photos
+
+=V0=
+[ ] iterate over all photos in selection
+[ ] find training photos
+  - has people
+  - has reliable date
+[ ] find photos 
+  - has people
+  - label red
+  - has no date created
+  - 
