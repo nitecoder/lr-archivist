@@ -1,62 +1,28 @@
 require "Logger"
 
+local Util = require "Util"
+
 local LrApplication = import 'LrApplication'
+local LrTasks = import "LrTasks"
 local LrFunctionContext = import "LrFunctionContext"
 local LrDialogs = import "LrDialogs"
-local LrTasks = import "LrTasks"
+local LrSelection = import "LrSelection"
 
 local catalog = LrApplication.activeCatalog()
 
-local top_colset_name = "Archivist"
+local top_colset_name = LOC "$$$/Archivist/TopColSet=Archivist"
+local training_colset_name = LOC "$$$/Archivist/TrainingColSet=Training Photos"
 
+local top_colset
+local training_col
 
---local function get_or_create_top_colset()
---  local colsets = catalog:getChildCollectionSets()
---  for i, colset in ipairs(colsets) do
---    if colset:getName() == top_colset_name then
---      logger:tracef("Found top colset %s (%s)", colset:getName(), colset.localIdentifier)
---      return colset
---    end
---  end
---  
---  -- Top colset not found. Create it. We don't take the write lock until here.
---  local created = nil
---  catalog:withWriteAccessDo(
---    LOC "$$$/Archivist/CreateTopColSet=Create Archivist top collection set",
---    function () created = catalog:createCollectionSet(top_colset_name, nil, true) end,
---    { timeout = 1 }
---  ) 
---  return created
---end
-
--- Similar to LrCatalog:createCollectionSet but takes care of locking if necessary
--- At the same time, avoids taking the lock if collection already exists.
--- Options are passed to withWriteAccessDo if it has to be called.
-function getOrCreateCollectionSet(name, parent, options)
-  local attempt = 0
-  local result
-  local f = function ()
-    attempt = attempt + 1
-    logger:tracef("attempt %d", attempt)
-    result = catalog:createCollectionSet(name, parent, true)
-    return result
-  end
-
-  -- First attempt to call without taking a lock
-  local status, res = LrTasks.pcall(f)
-  if status then
-    -- Either we found an existing set or we were able to create one because
-    -- the write lock was already obtained by the caller
-    return res
-  end
-
-  -- If here, we need the write access (hopefully)
-  -- logger:tracef("getOrCreateCollectionSet pcall failed (%s): %s", type(message), message)
-  return catalog:withWriteAccessDo(
-    LOC "$$$/Archivist/CreateTopColSet=Create collection set " .. name,
-    f
-  )
+local function ensure_colsets() 
+  opts = {timeout=1}
+  top_colset = Util.getOrCreateCollectionSet(top_colset_name, nil, opts)
+  training_col = Util.getOrCreateCollection(training_colset_name, top_colset, opts)
+  logger:tracef( "Archivist: training colsets %s, %s", top_colset, training_col)
 end
+
 
 
 local function hello_world()
@@ -65,9 +31,20 @@ local function hello_world()
       logger:tracef( "hello_world: enter" )
       LrDialogs.attachErrorDialogToFunctionContext( context )
         
-      logger:tracef( "Archivist: Starting" )
-      local colset = getOrCreateCollectionSet(top_colset_name, nil, {timeout=1})
-      logger:tracef( "Archivist: colset %s", colset:getName())
+      ensure_colsets()
+
+      logger:tracef( "Archivist: List training photos" )
+      LrTasks.startAsyncTask(
+        function(context)
+          logger:tracef("in task")
+          training_photos = training_col:getPhotos()
+          
+          for i, photo in ipairs(training_photos) do
+            logger:tracef("Photo %d: %s", i, photo)
+          end
+        end,
+        "List training photos"
+      )  
     end
   )
 end
